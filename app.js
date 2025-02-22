@@ -33,8 +33,46 @@ app.patch('/lists/:id',(req,res)=>{
 });
 
 app.delete('/lists/:id',(req,res)=>{
-
+    List.findOneAndDelete({
+        _id: req.params.id
+    }).then((removedListDoc)=> {
+        res.send(removedListDoc);
+    })
 });
+
+
+//Get all tasks from specific list
+app.get('/lists/:listId/tasks', (req,res)=> {
+    Task.find({
+        _listId:req.params.listId
+    }).then((tasks)=>{
+        res.send(tasks)
+    })
+});
+
+// create a new task in a specific list
+app.post('/lists/:listId/tasks',(req,res)=>{
+    let newTask = new Task({
+        title: req.body.title,
+        _listId: req.params.listId
+    });
+    newTask.save().then((newTaskDoc)=>{
+        res.send(newTaskDoc)
+    })
+})
+
+// update an existing task specified by taskId
+app.patch('/lists/:listId/tasks/:taskId', (req,res)=>{
+    Task.findOneAndUpdate({
+        _id: req.params.taskId,
+        _listId: req.params.listId
+    },{
+        $set: req.body,
+        new: true 
+    }).then(()=> {
+        res.sendStatus(200)
+    })
+})
 
 
 app.listen(3000,()=> {
