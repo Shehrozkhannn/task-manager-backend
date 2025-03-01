@@ -8,6 +8,19 @@ const { List, Task } = require('./db/models') ;
 //Load middleware
 app.use(bodyParser.json());
 
+// CORS
+app.use(function (req, res, next) {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, POST, HEAD, OPTIONS, PUT, PATCH, DELETE");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, x-access-token, x-refresh-token, _id");
+
+    res.header(
+        'Access-Control-Expose-Headers',
+        'x-access-token, x-refresh-token'
+    );
+    next();
+});
+
 app.get('/lists',(req,res)=> {
     List.find({}).then((lists)=>{
         res.send(lists)
@@ -50,6 +63,17 @@ app.get('/lists/:listId/tasks', (req,res)=> {
     })
 });
 
+// Get specific task from a specific list
+
+app.get('/lists/:listId/tasks/:taskId', (req, res)=>{
+    Task.findOne({
+        _id: req.params.taskId,
+        _listId: req.params.listId
+    }).then((task)=>{
+        res.send(task)
+    })
+})
+
 // create a new task in a specific list
 app.post('/lists/:listId/tasks',(req,res)=>{
     let newTask = new Task({
@@ -70,9 +94,20 @@ app.patch('/lists/:listId/tasks/:taskId', (req,res)=>{
         $set: req.body,
         new: true 
     }).then(()=> {
-        res.sendStatus(200)
+        res.send({message: "Updated"})
     })
 })
+
+// Remove a task in a specific list
+
+app.delete('/lists/:listId/tasks/:taskId', (req,res)=> {
+    Task.findOneAndDelete({
+        _id: req.params.taskId,
+        _listId: req.params.listId
+    }).then((removedTask)=> {
+        res.send(removedTask)
+    })
+});
 
 
 app.listen(3000,()=> {
