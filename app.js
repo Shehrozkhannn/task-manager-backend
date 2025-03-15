@@ -3,10 +3,47 @@ const bodyParser = require('body-parser');
 const {mongoose}= require('./db/mongoose');
 const app = express();
 
-const { List, Task } = require('./db/models') ;
+const { List, Task, User } = require('./db/models') ;
 
 //Load middleware
 app.use(bodyParser.json());
+
+// verify Refresh Token middle ware which will be verifying the session
+
+let verifySession = (req,res, next) => {
+    let refreshToken = req.header('x-refresh-token');
+    let _id = req.header('_id');
+    User.findByIdAndToken(_id,refreshToken).then((user)=>{
+        if(!user){
+            return Promise.reject({
+                'error': "User not found, Make sure that refresh token and user id are correct"
+            })
+        }
+        req.user_id = user._id;
+        req.userObject = user; 
+        req.refreshToken = refreshToken;
+
+        let isSessionValid = false;
+
+        user.sessions.forEach((session)=>{
+            if(session.token === refreshToken){
+                if(User.hasRefreshTokenExpired(session.expiresAt) === false){
+                    // refresh token has not expire 
+                    isSessionValid = true;
+                }
+            }
+        })
+        if(isSessionValid){
+            next();
+        }else{
+            return Promise.reject({
+                'error': "Refresh token has expired or the sessiosn is invalid"
+            })
+        }
+    }).catch((e)=>{
+        res.status(400).send(e);
+    })
+}
 
 // CORS
 app.use(function (req, res, next) {
@@ -108,6 +145,67 @@ app.delete('/lists/:listId/tasks/:taskId', (req,res)=> {
         res.send(removedTask)
     })
 });
+
+
+// USER ROUTES 
+
+// signup route 
+app.post('/users', (req,res)=> {
+    let body = req.body;
+    let newUser = new User(body);
+
+    newUser.save().then(()=> {
+        return newUser.createSession();
+    }).then((refreshToken)=> {
+        // session created succesfully - refreshToken 
+        // now we generate an access auth token for the user 
+
+        return newUser.generateAccessAuthToken().then((accessToken)=> {
+            return {accessToken, refreshToken}
+        })
+    }).then((authToken)=> {
+        // now we construct and send the response to the user with their auth tokens in the header and the user object in the body 
+        res
+        .header('x-refresh-token', authToken.refreshToken)
+        .header('x-access-token', authToken.accessToken)
+        .send(newUser);
+    }).catch((e)=> {
+        res.status(400).send(e);
+    })
+})
+
+// login route 
+app.post('/users/login',(req,res)=> {
+    let email = req.body.email;
+    let password = req.body.password;
+
+    User.findByCredentials(email, password).then((user)=> {
+        return user.createSession().then((refreshToken)=> {
+            // session created successfully - refreshToken returned 
+            // now we generate an access auth token for the user 
+            return user.generateAccessAuthToken().then((accessToken)=> {
+                return {accessToken, refreshToken}
+            })
+        }).then((authToken)=> {
+            res
+            .header('x-refresh-token', authToken.refreshToken)
+            .header('x-access-token', authToken.accessToken)
+            .send(user);
+        })
+    }).catch((e)=>{
+        res.status(400).send(e);
+    })
+})
+
+// generate and return an access token
+app.get('/users/me/access-token', verifySession, (req,res)=> {
+    // now by applying verifySession middleware we know that user is authenticated 
+    req.userObject.generateAccessAuthToken().then((accessToken)=>{
+        res.header('x-access-token', accessToken).send({accessToken});
+    }).catch((e)=>{
+        res.status(400).send(e);
+    })
+})
 
 
 app.listen(3000,()=> {
