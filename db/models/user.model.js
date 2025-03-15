@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const _ = require('lodash');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 
 const jwtSecret = "451283482672568792790758192148erfdfdfdefwfdwdwwfdwf7256879279";
 
@@ -76,10 +77,67 @@ UserSchema.methods.createSession = function(){
     }).then((refreshToken)=> {
         return refreshToken
     }).catch((e)=> {
-        return Promise.reject('Failed to save session to database.\n' + e);
+        return Promise.reject('Failed to save session to database.\n' + e);qe
     })
 }
 
+// MODEL METHODS (STATIC METHODS) 
+UserSchema.statics.findByIdAndToken = function(_id, token){
+    // find user by id and token 
+
+    const User = this;
+    return  User.findOne({
+        _id,
+        'session.token': token
+    });
+}
+
+UserSchema.statics.findByCredentials = function(email, password){
+    let User = this;
+    return User.findOne({email}).then((user)=>{
+        if(!user) return Promise.reject();
+        return new Promise((resolve,reject)=> {
+            bcrypt.compare(password,user.password, (err,res)=>{
+                if(res) resolve(user);
+                else{
+                    reject();
+                }
+            })
+        })
+    })
+
+}
+
+UserSchema.static.hasRefreshTokenExpired = (expiresAt) => {
+    let secondsSinceEpoch = Date.now() / 1000;
+    if(expiresAt > secondsSinceEpoch){
+        return false
+    }else{
+        return true
+    }
+}
+
+// MIDDLEWARE 
+UserSchema.pre('save', function(next){
+    let user = this;
+    let cosFactor = 10;
+
+    if(user.isModified('password')){
+        // if password is changed/edited run this code 
+
+        //generate salt and hashpassword 
+        bcrypt.genSalt((cosFactor,(err,salt)=>{
+            bcrypt.hash(user.password, salt,(err,hash)=>{
+                user.password = hash;
+                next();
+            })
+        }))
+    }else{
+        next()
+    }
+})
+
+// HELPER METHODS 
 let saveSessionToDatabase = (user, refreshToken) => {
     return new Promise((resolve, reject) => {
         let expiresAt =  generateRefreshTokenExpiryTime();
@@ -98,3 +156,7 @@ let generateRefreshTokenExpiryTime = () => {
     let secondUntilExpire = ((daysUntilExpire * 24) * 60) * 60;
     return ((Date.now() / 1000) + secondUntilExpire);
 }
+
+
+const User = mongoose.model('User', UserSchema);
+module.exports =  { User };
