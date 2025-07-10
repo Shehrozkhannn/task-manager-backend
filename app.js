@@ -2,11 +2,17 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const {mongoose}= require('./db/mongoose');
 const app = express();
+const jwt = require('jsonwebtoken')
 
 const { List, Task, User } = require('./db/models') ;
 
+const bcrypt = require('bcryptjs');
+
+bcrypt.hash('test123', 10).then(console.log);
+
 //Load middleware
 app.use(bodyParser.json());
+app.use(express.json());
 
 // verify Refresh Token middle ware which will be verifying the session
 
@@ -58,9 +64,28 @@ app.use(function (req, res, next) {
     next();
 });
 
-app.get('/lists',(req,res)=> {
-    List.find({}).then((lists)=>{
+// check whether request has valid JWT token 
+let authenticate = (req, res, next) => {
+    let token = req.header('x-refresh-token');
+    // verify jwt token 
+    jwt.verify(token,User.getJWTSecret(), (err,decoded)=>{
+        if(err){
+            res.status(401).send(err);
+        }else{
+            req.user_id = decoded._id;
+            next();
+        }
+    })
+
+}
+
+app.get('/lists', authenticate, (req,res)=> {
+    List.find({
+        _userId: req.user_id
+    }).then((lists)=>{
         res.send(lists)
+    }).catch((e)=>{
+        res.send(e)
     })
 });
 
